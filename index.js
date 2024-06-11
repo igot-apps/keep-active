@@ -1,11 +1,15 @@
 const express = require("express");
 const puppeteer = require('puppeteer');
 const fs = require('fs');
+const player = require('play-sound')();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
 const cookiesFilePath = './cookies.json';
 const localStorageFilePath = './localStorage.json';
+const soundPath = './internetDiscounted.mp3';
+
+let soundProcess = null;
 
 const delay = ms => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -41,6 +45,7 @@ const saveCookiesAndLocalStorage = async (page) => {
     fs.writeFileSync(localStorageFilePath, JSON.stringify(localStorageData, null, 2));
 
     console.log('Session saved successfully');
+
   } catch (error) {
     console.error('Error saving session:', error);
   }
@@ -54,10 +59,36 @@ const refreshPage = async (page) => {
         timeout: 1000 * 60 // 60 seconds
       });
       console.log('Page refreshed successfully');
+
+      // Navigate to the dashboard page
+      await page.goto('https://www.bybit.com/en/dashboard', {
+        waitUntil: 'networkidle2',
+        timeout: 1000 * 60 // 60 seconds
+      });
+      console.log('Navigated to dashboard page');
+
+      // Wait for the profile name element to be visible
+      await page.waitForSelector('.molybiz-mepage-ui-profile-name', { visible: true });
+      console.log('Profile name element is visible');
+
+      // Get the text content of the profile name element
+      const profileName = await page.$eval('.molybiz-mepage-ui-profile-name', element => element.textContent);
+      console.log('Profile name:', profileName);
+
+      await page.setViewport({ width: 1920, height: 1080 }); // Set viewport to a standard desktop screen size (1920x1080)
+
       return; // Exit the loop once the page is successfully loaded
     } catch (error) {
-      if (error instanceof puppeteer.errors.TimeoutError || error.message.includes('net::ERR_INTERNET_DISCONNECTED')) {
-        console.error(`Page load error: ${error.message}. Retrying in 10 seconds...`);
+      if (error.message.includes('net::ERR_INTERNET_DISCONNECTED')) {
+        console.error(`Internet connection error: ${error.message}. Retrying in 10 seconds...`);
+        if (!soundProcess) { // Play the sound only if it's not already playing
+          soundProcess = player.play(soundPath, function(err) {
+            if (err) console.error('Error playing sound:', err);
+          });
+        }
+        await delay(1000 * 10); // Wait for 10 seconds before retrying
+      } else if (error instanceof puppeteer.errors.TimeoutError) {
+        console.error(`Timeout error: ${error.message}. Retrying in 10 seconds...`);
         await delay(1000 * 10); // Wait for 10 seconds before retrying
       } else {
         console.error('Error refreshing page:', error);
